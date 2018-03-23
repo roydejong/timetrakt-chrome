@@ -99,11 +99,16 @@
             margin-bottom: 5px;
             color: #27ae60;
         }
+
+        .timer--err {
+            min-width: 250px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
-<div class="timer">
+<div class="timer TOG--TIMER">
     <div class="timer__top">
         <div class="face">
             <span class="TXT--FACE">0:00:00</span>
@@ -126,6 +131,13 @@
         <i class="mdi mdi-stop"></i>
         <span>Stop</span>
     </a>
+    <a class="timer__link" href="https://timetrakt.com" target="_blank">Open web app</a>
+</div>
+
+<div class="timer timer--err TOG--ERR">
+    <div class="timer__bottom">
+        <div class="timer__bottom-project">It looks like you have been logged out of Timetrakt. Visit the web app to log in now.</div>
+    </div>
     <a class="timer__link" href="https://timetrakt.com" target="_blank">Open web app</a>
 </div>
 

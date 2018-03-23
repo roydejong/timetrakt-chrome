@@ -44,7 +44,7 @@ class BadgeTicker {
         /**
          * @type {boolean}
          */
-        this.badgeSecondUpdatesEnabled = false;
+        this.networkOk = false;
 
         // Network config
         axios.defaults.baseURL = 'https://timetrakt.com/api/';
@@ -243,24 +243,30 @@ class BadgeTicker {
         for (let i = 0; i < views.length; i++) {
             let doc = views[i].document;
 
-            if (this.timerState.started) {
-                fnSetText(doc, "FACE", updateParcel.textFull);
+            if (this.timerState && this.networkOk) {
+                fnToggleVis(doc, "TIMER", true);
 
-                fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], true);
-                fnToggleVis(doc, ["BTN-START"], false);
+                if (this.timerState.started) {
+                    fnSetText(doc, "FACE", updateParcel.textFull);
+
+                    fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], true);
+                    fnToggleVis(doc, ["BTN-START"], false);
+                } else {
+                    fnSetText(doc, "FACE", "Stopped");
+
+                    fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], false);
+                    fnToggleVis(doc, ["BTN-START"], true);
+                }
+
+                if (this.timerState.active_task) {
+                    fnSetText(doc, "TASK", this.timerState.active_task.name);
+                    fnSetText(doc, "PROJECT", this.timerState.active_task.project.name);
+                } else {
+                    fnSetText(doc, ["TASK", "PROJECT"]);
+                    fnToggleVis(doc, ["BTN-SAVE"], false);
+                }
             } else {
-                fnSetText(doc, "FACE", "Stopped");
-
-                fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], false);
-                fnToggleVis(doc, ["BTN-START"], true);
-            }
-
-            if (this.timerState.active_task) {
-                fnSetText(doc, "TASK", this.timerState.active_task.name);
-                fnSetText(doc, "PROJECT", this.timerState.active_task.project.name);
-            } else {
-                fnSetText(doc, ["TASK", "PROJECT"]);
-                fnToggleVis(doc, ["BTN-SAVE"], false);
+                fnToggleVis(doc, "TIMER", false);
             }
         }
     }
@@ -280,7 +286,7 @@ class BadgeTicker {
         this.setUpdateObjTexts(updateParcel);
 
         // Apply to UI
-        if (this.badgeSecondUpdatesEnabled) {
+        if (this.networkOk) {
             this.applyBadgeConfig(updateParcel);
         }
 
@@ -303,7 +309,7 @@ class BadgeTicker {
                 console.debug('[Net]', '(API status result)', timerState);
 
                 this.handleTimerState(timerState, updateParcel);
-                this.badgeSecondUpdatesEnabled = true;
+                this.networkOk = true;
             })
             .catch((err) => {
                 console.warn('[Net]', '(API status fetch failed)', err);
@@ -312,7 +318,7 @@ class BadgeTicker {
                 updateParcel.color = "#e74c3c";
                 updateParcel.tooltip = "Communication error";
 
-                this.badgeSecondUpdatesEnabled = false;
+                this.networkOk = false;
             })
             .then(() => {
                 this.applyBadgeConfig(updateParcel);
