@@ -102,6 +102,9 @@ class BadgeTicker {
                     }).then(() => {
                         this.tickUiUpdate();
                     });
+                } else if (msg === "refetch") {
+                    // Full server refetch
+                    this.tickFullUpdate();
                 }
             });
         })
