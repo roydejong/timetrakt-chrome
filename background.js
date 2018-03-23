@@ -245,6 +245,7 @@ class BadgeTicker {
 
             if (this.timerState && this.networkOk) {
                 fnToggleVis(doc, "TIMER", true);
+                fnToggleVis(doc, "ERR", false);
 
                 if (this.timerState.started) {
                     fnSetText(doc, "FACE", updateParcel.textFull);
@@ -267,6 +268,7 @@ class BadgeTicker {
                 }
             } else {
                 fnToggleVis(doc, "TIMER", false);
+                fnToggleVis(doc, "ERR", true);
             }
         }
     }
