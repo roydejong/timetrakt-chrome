@@ -44,7 +44,7 @@ class BadgeTicker {
         /**
          * @type {boolean}
          */
-        this.secondUpdatesEnabled = false;
+        this.badgeSecondUpdatesEnabled = false;
 
         // Network config
         axios.defaults.baseURL = 'https://timetrakt.com/api/';
@@ -55,22 +55,65 @@ class BadgeTicker {
         }, 1000 * 60 * FULL_UPDATE_INTERVAL_MINS);
 
         setInterval(() => {
-            if (this.secondUpdatesEnabled) {
-                this.tickUiUpdate();
-            }
+            this.tickUiUpdate();
         }, 1000);
 
         // Immediate update
         this.tickFullUpdate();
+
+        // Listen for messages from the popup
+        chrome.extension.onConnect.addListener((port) => {
+            port.onMessage.addListener((msg) => {
+                console.debug('[ChromeNet]', '(Incoming message)', msg);
+
+                if (msg === "hello") {
+                    // Pop up opened, do UI update
+                    this.tickUiUpdate();
+                } else if (msg === "start") {
+                    // Start timer
+                    TraktApi.postTimerStateUpdate({
+                        started: true
+                    }).then((newState) => {
+                        this.handleTimerState(newState);
+                    }).catch((err) => {
+                        console.error('[TimerAction]', '(Error: start)', err);
+                    }).then(() => {
+                        this.tickUiUpdate();
+                    });
+                } else if (msg === "delete") {
+                    // Stop timer, delete activity
+                    TraktApi.postTimerStateUpdate({
+                        started: false
+                    }).then((newState) => {
+                        this.handleTimerState(newState);
+                    }).catch((err) => {
+                        console.error('[TimerAction]', '(Error: delete)', err);
+                    }).then(() => {
+                        this.tickUiUpdate();
+                    });
+                } else if (msg === "save") {
+                    // Stop timer, delete activity
+                    TraktApi.postTimerStateUpdate({
+                        finish: true
+                    }).then((newState) => {
+                        this.handleTimerState(newState);
+                    }).catch((err) => {
+                        console.error('[TimerAction]', '(Error: save)', err);
+                    }).then(() => {
+                        this.tickUiUpdate();
+                    });
+                }
+            });
+        })
     }
 
     /**
      * Processes the timer state.
      *
      * @param {Object} timerState Remote data from server.
-     * @param {Object} outNextBadge Variable to be set with next badge data.
+     * @param {Object} updateParcel Variable to be set with next badge data.
      */
-    static handleTimerState(timerState, outNextBadge) {
+    static handleTimerState(timerState, updateParcel) {
         this.timerState = timerState;
 
         // Determine time offset between us and the server
@@ -81,41 +124,44 @@ class BadgeTicker {
 
         console.debug('[Timer]', 'Time sync, diff between us and server:', this.timeOffset);
 
-        // Update badge
-        this.getBadgeTextAndTooltip(outNextBadge);
+        if (updateParcel) {
+            // Update badge
+            this.setUpdateObjTexts(updateParcel);
+        }
     }
 
     /**
      * Prepares text & tooltip for extension badge.
      *
-     * @param {Object} outNextBadge Variable to be set with next badge data.
+     * @param {Object} updateParcel Variable to be set with next badge data.
      */
-    static getBadgeTextAndTooltip(outNextBadge) {
+    static setUpdateObjTexts(updateParcel) {
         if (!this.timerState.started) {
             // Timer stopped
-            outNextBadge.text = "";
-            outNextBadge.tooltip = "Stopped";
+            updateParcel.text = "";
+            updateParcel.tooltip = "Stopped";
             return;
         }
 
         if (this.timerState.active_task) {
             // Active task selected
-            outNextBadge.tooltip = this.timerState.active_task.name;
+            updateParcel.tooltip = this.timerState.active_task.name;
         } else {
             // No task but timer active (?)
-            outNextBadge.tooltip = "No active task";
+            updateParcel.tooltip = "No active task";
         }
 
         // Show timer active time
         let clockText = this.getTimerClockFaceText();
 
-        outNextBadge.text = clockText.short;
+        updateParcel.text = clockText.short;
+        updateParcel.textFull = clockText.full;
 
-        if (outNextBadge.tooltip) {
-            outNextBadge.tooltip += "\r\n";
+        if (updateParcel.tooltip) {
+            updateParcel.tooltip += "\r\n";
         }
 
-        outNextBadge.tooltip += clockText.full;
+        updateParcel.tooltip += clockText.full;
     }
 
     /**
@@ -159,22 +205,86 @@ class BadgeTicker {
     }
 
     /**
+     * Update the popup UI.
+     */
+    static updatePopupUi(updateParcel) {
+        let views = chrome.extension.getViews({
+            type: "popup"
+        });
+
+        let fnSetText = (doc, selectors, value) => {
+            selectors = (selectors.constructor === Array) ? selectors : [selectors.toString()];
+
+            for (let i = 0; i < selectors.length; i++) {
+                let selector = selectors[i];
+                let els = doc.getElementsByClassName(`TXT--${selector}`);
+
+                for (let j = 0; j < els.length; j++) {
+                    let el = els[j];
+                    el.textContent = value || "";
+                }
+            }
+        };
+
+        let fnToggleVis = (doc, selectors, on) => {
+            selectors = (selectors.constructor === Array) ? selectors : [selectors.toString()];
+
+            for (let i = 0; i < selectors.length; i++) {
+                let selector = selectors[i];
+                let els = doc.getElementsByClassName(`TOG--${selector}`);
+
+                for (let j = 0; j < els.length; j++) {
+                    let el = els[j];
+                    el.style.display = (on ? "flex" : "none");
+                }
+            }
+        };
+
+        for (let i = 0; i < views.length; i++) {
+            let doc = views[i].document;
+
+            if (this.timerState.started) {
+                fnSetText(doc, "FACE", updateParcel.textFull);
+
+                fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], true);
+                fnToggleVis(doc, ["BTN-START"], false);
+            } else {
+                fnSetText(doc, "FACE", "Stopped");
+
+                fnToggleVis(doc, ["BTN-SAVE", "BTN-DELETE"], false);
+                fnToggleVis(doc, ["BTN-START"], true);
+            }
+
+            if (this.timerState.active_task) {
+                fnSetText(doc, "TASK", this.timerState.active_task.name);
+                fnSetText(doc, "PROJECT", this.timerState.active_task.project.name);
+            } else {
+                fnSetText(doc, ["TASK", "PROJECT"]);
+                fnToggleVis(doc, ["BTN-SAVE"], false);
+            }
+        }
+    }
+
+    /**
      * Event handler that should be called every second.
      * Causes badge update only.
      */
     static tickUiUpdate() {
-        if (!this.secondUpdatesEnabled) {
-            return;
-        }
-
-        let nextBadge = {
+        // Fill badge data
+        let updateParcel = {
             text: "",
             color: "#d352ad",
             tooltip: ""
         };
 
-        this.getBadgeTextAndTooltip(nextBadge);
-        this.applyBadgeConfig(nextBadge);
+        this.setUpdateObjTexts(updateParcel);
+
+        // Apply to UI
+        if (this.badgeSecondUpdatesEnabled) {
+            this.applyBadgeConfig(updateParcel);
+        }
+
+        this.updatePopupUi(updateParcel);
     }
 
     /**
@@ -182,7 +292,7 @@ class BadgeTicker {
      * Causes status fetch and badge update.
      */
     static tickFullUpdate() {
-        let nextBadge = {
+        let updateParcel = {
             text: "",
             color: "#d352ad",
             tooltip: ""
@@ -192,54 +302,46 @@ class BadgeTicker {
             .then((timerState) => {
                 console.debug('[Net]', '(API status result)', timerState);
 
-                this.handleTimerState(timerState, nextBadge);
-                this.secondUpdatesEnabled = true;
+                this.handleTimerState(timerState, updateParcel);
+                this.badgeSecondUpdatesEnabled = true;
             })
             .catch((err) => {
                 console.warn('[Net]', '(API status fetch failed)', err);
 
-                nextBadge.text = "!";
-                nextBadge.color = "#e74c3c";
-                nextBadge.tooltip = "Communication error";
+                updateParcel.text = "!";
+                updateParcel.color = "#e74c3c";
+                updateParcel.tooltip = "Communication error";
 
-                this.secondUpdatesEnabled = false;
+                this.badgeSecondUpdatesEnabled = false;
             })
             .then(() => {
-                this.applyBadgeConfig(nextBadge);
+                this.applyBadgeConfig(updateParcel);
             });
     }
 
     /**
      * Calls chrome APIs to reconfigure extension badge.
      *
-     * @param {Object} nextBadge
+     * @param {Object} updateParcel
      */
-    static applyBadgeConfig(nextBadge) {
-        if (!this.lastBadge) {
-            this.lastBadge = { };
-        }
-
-        nextBadge = Object.assign({}, this.lastBadge, nextBadge)
-
+    static applyBadgeConfig(updateParcel) {
         chrome.browserAction.setBadgeText({
-            text: nextBadge.text || "Timetrakt"
+            text: updateParcel.text || ""
         });
 
         chrome.browserAction.setBadgeBackgroundColor({
-            color: nextBadge.color || "#d352ad"
+            color: updateParcel.color || "#d352ad"
         });
 
-        if (nextBadge.tooltip) {
+        if (updateParcel.tooltip) {
             chrome.browserAction.setTitle({
-                title: `Timetrakt - ${nextBadge.tooltip}`
+                title: `Timetrakt - ${updateParcel.tooltip}`
             });
         } else {
             chrome.browserAction.setTitle({
                 title: "Timetrakt"
             });
         }
-
-        this.lastBadge = nextBadge;
     }
 
     /**
@@ -248,8 +350,30 @@ class BadgeTicker {
      * @return {Promise<Object>}
      */
     static refreshState() {
+        return TraktApi.getTimerState();
+    }
+}
+
+class TraktApi {
+    static getTimerState() {
         return new Promise((resolve, reject) => {
             axios.get('/v1/timer')
+                .then((res) => {
+                    resolve(res.data);
+                })
+                .catch((err) => {
+                    reject(err);
+                })
+        });
+    }
+
+    static postTimerStateUpdate(timerUpdateParcel) {
+        timerUpdateParcel = Object.assign({ }, BadgeTicker.timerState, timerUpdateParcel || { });
+
+        console.debug('[API]', '(Post timer update)', 'Merged state for POST:', timerUpdateParcel);
+
+        return new Promise((resolve, reject) => {
+            axios.post('/v1/timer', timerUpdateParcel)
                 .then((res) => {
                     resolve(res.data);
                 })
