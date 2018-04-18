@@ -68,6 +68,7 @@ class BadgeTicker {
 
                 if (msg === "hello") {
                     // Pop up opened, do full update
+                    this.tickUiUpdate();
                     this.tickFullUpdate();
                 } else if (msg === "start") {
                     // Start timer
