@@ -67,8 +67,8 @@ class BadgeTicker {
                 console.debug('[ChromeNet]', '(Incoming message)', msg);
 
                 if (msg === "hello") {
-                    // Pop up opened, do UI update
-                    this.tickUiUpdate();
+                    // Pop up opened, do full update
+                    this.tickFullUpdate();
                 } else if (msg === "start") {
                     // Start timer
                     TraktApi.postTimerStateUpdate({
