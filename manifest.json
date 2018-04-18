@@ -1,7 +1,7 @@
 {
   "name": "Timetrakt for Chrome",
   "short_name": "Timetrakt",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Timetrakt time tracker for Chrome",
   "manifest_version": 2,
   "background": {
